@@ -65,31 +65,27 @@ bool NTPClient::forceUpdate() {
     Serial.println("Update from NTP Server");
   #endif
 
-  this->sendNTPPacket();
+  if ((millis() - this->_lastRequest >= this->_requestInterval) || this->_lastRequest == 0) {
+    this->sendNTPPacket();
+  }
 
-  // Wait till data is there or timeout...
-  byte timeout = 0;
-  int cb = 0;
-  do {
-    delay ( 10 );
-    cb = this->_udp->parsePacket();
-    if (timeout > 100) return false; // timeout after 1000 ms
-    timeout++;
-  } while (cb == 0);
+  if (this->_udp->parsePacket()) {
 
-  this->_lastUpdate = millis() - (10 * (timeout + 1)); // Account for delay in reading the time
+    this->_lastUpdate = millis(); // Account for delay in reading the time
 
-  this->_udp->read(this->_packetBuffer, NTP_PACKET_SIZE);
+    this->_udp->read(this->_packetBuffer, NTP_PACKET_SIZE);
 
-  unsigned long highWord = word(this->_packetBuffer[40], this->_packetBuffer[41]);
-  unsigned long lowWord = word(this->_packetBuffer[42], this->_packetBuffer[43]);
-  // combine the four bytes (two words) into a long integer
-  // this is NTP time (seconds since Jan 1 1900):
-  unsigned long secsSince1900 = highWord << 16 | lowWord;
+    unsigned long highWord = word(this->_packetBuffer[40], this->_packetBuffer[41]);
+    unsigned long lowWord = word(this->_packetBuffer[42], this->_packetBuffer[43]);
+    // combine the four bytes (two words) into a long integer
+    // this is NTP time (seconds since Jan 1 1900):
+    unsigned long secsSince1900 = highWord << 16 | lowWord;
 
-  this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
+    this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
 
-  return true;
+    return true;
+  }
+
 }
 
 bool NTPClient::update() {
@@ -148,24 +144,31 @@ void NTPClient::setUpdateInterval(int updateInterval) {
   this->_updateInterval = updateInterval;
 }
 
+void NTPClient::setUpdateServer(const char* poolServerName) {
+  this->_poolServerName = poolServerName;
+}
+
+
+
+
 void NTPClient::sendNTPPacket() {
   // set all bytes in the buffer to 0
-  memset(this->_packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  this->_packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  this->_packetBuffer[1] = 0;     // Stratum, or type of clock
-  this->_packetBuffer[2] = 6;     // Polling Interval
-  this->_packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  this->_packetBuffer[12]  = 49;
-  this->_packetBuffer[13]  = 0x4E;
-  this->_packetBuffer[14]  = 49;
-  this->_packetBuffer[15]  = 52;
-
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  this->_udp->beginPacket(this->_poolServerName, 123); //NTP requests are to port 123
-  this->_udp->write(this->_packetBuffer, NTP_PACKET_SIZE);
-  this->_udp->endPacket();
+  if (this->_udp->beginPacket(this->_poolServerName, 123)) {
+    memset(this->_packetBuffer, 0, NTP_PACKET_SIZE);
+    // Initialize values needed to form NTP request
+    // (see URL above for details on the packets)
+    this->_packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+    this->_packetBuffer[1] = 0;     // Stratum, or type of clock
+    this->_packetBuffer[2] = 6;     // Polling Interval
+    this->_packetBuffer[3] = 0xEC;  // Peer Clock Precision
+    // 8 bytes of zero for Root Delay & Root Dispersion
+    this->_packetBuffer[12]  = 49;
+    this->_packetBuffer[13]  = 0x4E;
+    this->_packetBuffer[14]  = 49;
+    this->_packetBuffer[15]  = 52;
+    // all NTP fields have been given values, now
+    // you can send a packet requesting a timestamp:
+    this->_udp->write(this->_packetBuffer, NTP_PACKET_SIZE);
+    this->_udp->endPacket();
+  }
 }
