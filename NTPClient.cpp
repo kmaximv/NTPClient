@@ -61,15 +61,22 @@ void NTPClient::begin(int port) {
 }
 
 bool NTPClient::forceUpdate() {
-  #ifdef DEBUG_NTPClient
-    Serial.println("Update from NTP Server");
-  #endif
-
   if ((millis() - this->_lastRequest >= this->_requestInterval) || this->_lastRequest == 0) {
     this->sendNTPPacket();
+    this->_lastRequest = millis();
+    return false;
   }
 
-  if (this->_udp->parsePacket()) {
+  int cb = 0;
+  cb = this->_udp->parsePacket();
+  if (this->_udp->available()) {
+    #ifdef DEBUG_NTPClient
+      Serial.print("NTP: Before: ");
+      Serial.print(getFormattedTime());
+      Serial.print(" | Packet: ");
+      Serial.print(cb);
+      Serial.print(" b | After: ");
+    #endif  //DEBUG_NTPClient
 
     this->_lastUpdate = millis(); // Account for delay in reading the time
 
@@ -83,9 +90,22 @@ bool NTPClient::forceUpdate() {
 
     this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
 
+    #ifdef DEBUG_NTPClient
+      Serial.print(getFormattedTime());
+      Serial.print(" ==>");
+
+      String packetStr = "";
+      for (size_t i = 0; i < NTP_PACKET_SIZE; i++)
+      {
+        packetStr += String(_packetBuffer[i], HEX);
+      }
+      Serial.println(packetStr);
+    #endif  //DEBUG_NTPClient
+
+    end();
+
     return true;
   }
-
 }
 
 bool NTPClient::update() {
